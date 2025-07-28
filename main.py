@@ -465,31 +465,24 @@ async def hackathon_endpoint(request: HackathonRequest):
 
 @app.get("/docs/redirect", include_in_schema=False)
 def redirect_swagger_section():
-    html_content = """
+    return HTMLResponse(content="""
+    <!DOCTYPE html>
     <html>
         <head>
-            <title>Redirecting to API endpoint…</title>
             <meta charset="UTF-8">
+            <title>Redirecting...</title>
             <script>
-                setTimeout(function() {
+                window.onload = function() {
                     window.location.href = "/docs#/default/hackathon_endpoint_hackrx_run_post";
-                }, 1000);
+                }
             </script>
         </head>
         <body>
-            <h3>Loading Swagger UI...</h3>
-            <p>You will be redirected to the <code>POST /api/v1/hackrx/run</code> endpoint shortly.</p>
+            <h3>Redirecting to Swagger UI...</h3>
+            <p>If not redirected, <a href="/docs#/default/hackathon_endpoint_hackrx_run_post">click here</a>.</p>
         </body>
     </html>
-    """
-    return HTMLResponse(content=html_content)
-
-
-if __name__ == "__main__":
-    import uvicorn
-    print(f"[kg290] Starting server with Scout Model: {SCOUT_MODEL}")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
-
+    """)
 
 if __name__ == "__main__":
     import uvicorn
