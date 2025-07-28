@@ -464,25 +464,17 @@ async def hackathon_endpoint(request: HackathonRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/docs/redirect", include_in_schema=False)
-def redirect_swagger_section():
-    return HTMLResponse(content="""
-    <!DOCTYPE html>
-    <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Redirecting...</title>
-            <script>
-                window.onload = function() {
-                    window.location.href = "/docs#/default/hackathon_endpoint_hackrx_run_post";
-                }
-            </script>
-        </head>
-        <body>
-            <h3>Redirecting to Swagger UI...</h3>
-            <p>If not redirected, <a href="/docs#/default/hackathon_endpoint_hackrx_run_post">click here</a>.</p>
-        </body>
-    </html>
-    """)
+def redirect_to_docs():
+    return RedirectResponse(url="/docs#/default/hackathon_endpoint_hackrx_run_post")
+
+
+# ✅ Sample endpoint as per your hackathon specification
+@app.post("/api/v1/hackrx/run")
+async def hackathon_endpoint(request: Request):
+    data = await request.json()
+    questions = data.get("questions", [])
+    blob_url = data.get("blob_url", "")
+    return {"answers": [f"Dummy answer for: {q}" for q in questions]}
 
 if __name__ == "__main__":
     import uvicorn
