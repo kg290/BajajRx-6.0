@@ -1,9 +1,28 @@
+# Core Web Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-sentence-transformers==2.2.2
-faiss-cpu==1.7.4
-PyMuPDF==1.23.14
-python-dotenv==1.0.0
-requests==2.31.0
 pydantic==2.5.0
+
+# Machine Learning & Embeddings
+sentence-transformers==2.2.2
 numpy==1.24.3
+faiss-cpu==1.7.4
+# Alternative for GPU environments: faiss-gpu==1.7.4
+
+# PDF Processing
+PyMuPDF==1.23.8
+requests==2.31.0
+
+# Environment Management
+python-dotenv==1.0.0
+
+# Development & Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2
+
+# Production Deployment
+gunicorn==21.2.0
+
+# Optional: For enhanced logging and monitoring
+structlog==23.2.0

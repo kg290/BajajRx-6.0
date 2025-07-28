@@ -1,0 +1,185 @@
+# BajajRx-6.0 Render Configuration
+# Author: kg290
+# Date: 2025-07-28 15:46:06
+# Optimized for hackathon evaluation with dual LLM system
+
+services:
+  - type: web
+    name: bajajrx-6-insurance-assistant
+    runtime: python3
+    buildCommand: |
+      echo "[kg290] Starting build process at $(date -u '+%Y-%m-%d %H:%M:%S') UTC"
+      echo "[kg290] Installing dependencies for dual LLM system..."
+      
+      # Upgrade pip for better dependency resolution
+      pip install --upgrade pip setuptools wheel
+      
+      # Install requirements with optimizations
+      pip install --no-cache-dir -r requirements.txt
+      
+      # Verify critical components for hackathon
+      echo "[kg290] Verifying hackathon-critical components..."
+      python -c "
+      import sentence_transformers
+      import faiss
+      import fitz
+      import fastapi
+      import uvicorn
+      import requests
+      import numpy as np
+      from dotenv import load_dotenv
+      
+      print('[kg290] Core ML dependencies verified:')
+      print(f'  - sentence-transformers: {sentence_transformers.__version__}')
+      print(f'  - faiss-cpu: Available')
+      print(f'  - PyMuPDF: Available') 
+      print(f'  - FastAPI: {fastapi.__version__}')
+      print(f'  - NumPy: {np.__version__}')
+      print('[kg290] Build verification successful')
+      "
+      
+      # Pre-download embedding model for faster startup (hackathon optimization)
+      echo "[kg290] Pre-downloading embedding model for faster startup..."
+      python -c "
+      try:
+          from sentence_transformers import SentenceTransformer
+          import time
+          start_time = time.time()
+          model = SentenceTransformer('intfloat/e5-base-v2')
+          load_time = time.time() - start_time
+          print(f'[kg290] Embedding model pre-loaded in {load_time:.2f} seconds')
+          print(f'[kg290] Model cached for production use')
+      except Exception as e:
+          print(f'[kg290] Model pre-load skipped: {e}')
+      " || echo "[kg290] Model pre-load failed (will load on first request)"
+      
+      echo "[kg290] Build optimization completed successfully"
+
+    startCommand: chmod +x start.sh && ./start.sh
+
+    # Optimized environment for hackathon performance
+    plan: starter  # Upgrade to standard/pro for better performance if needed
+
+    # Environment variables for dual LLM system
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONPATH
+        value: "."
+      - key: GROQ_API_KEY
+        sync: false  # Set this in Render dashboard - CRITICAL for dual LLM system
+
+    # Health check configuration for hackathon evaluation
+    healthCheckPath: /health
+
+    # Deployment settings optimized for hackathon
+    autoDeploy: true
+
+    # Resource optimization for dual LLM performance
+    disk:
+      name: bajajrx-disk
+      size: 1GB  # Sufficient for model caching and temporary files
+
+# Hackathon-specific configuration
+annotations:
+  project: "BajajRx-6.0"
+  author: "kg290"
+  hackathon: "insurance-policy-analytics"
+  deployment_timestamp: "2025-07-28T15:46:06Z"
+
+  # Evaluation criteria optimization
+  evaluation_criteria:
+    accuracy: "Dual LLM routing with Llama 4 Scout (128K) + Llama 3.1 70B"
+    token_efficiency: "Intelligent routing based on query complexity analysis"
+    explainability: "Detailed reasoning chains, confidence scores, and model usage tracking"
+    latency: "Optimized chunking (1200 chars), FAISS indexing, and smart retrieval"
+    reusability: "Modular architecture with factory functions and clean interfaces"
+
+  # Model configuration
+  models:
+    scout_model: "meta-llama/llama-4-scout-17b-16e-instruct"
+    scout_context: "128K tokens"
+    scout_capabilities: ["json_mode", "structured_output", "fast_inference", "moe_architecture"]
+    deep_model: "llama3-70b-8192"
+    deep_context: "8K tokens"
+    deep_capabilities: ["complex_reasoning", "detailed_analysis", "legal_interpretation"]
+    embedding_model: "intfloat/e5-base-v2"
+    retrieval_strategy: "FAISS with smart chunking"
+
+  # API endpoints for hackathon evaluation
+  api_endpoints:
+    primary: "/hackrx/run - Main hackathon endpoint (POST)"
+    development: "/ask - Development queries (POST)"
+    health: "/health - Health check with model status (GET)"
+    info: "/ - API information and model configuration (GET)"
+
+  # Dual LLM routing strategy
+  routing_strategy:
+    decision_model: "meta-llama/llama-4-scout-17b-16e-instruct"
+    routing_threshold: 0.85
+    complexity_levels: ["simple", "medium", "complex"]
+    fallback_strategy: "Always escalate to deep model on uncertainty"
+
+  # Performance optimizations
+  optimizations:
+    chunking: "Smart sentence-boundary chunking with 1200 char limit"
+    overlap: "100 character overlap for context continuity"
+    retrieval: "Top-7 chunks with confidence scoring"
+    caching: "Model pre-loading during build"
+    logging: "Comprehensive tracking for evaluation"
+
+  # Development and debugging
+  development:
+    local_pdf_support: "data/Dataset1.pdf for /ask endpoint"
+    url_pdf_support: "Dynamic PDF processing for /hackrx/run"
+    error_handling: "Comprehensive fallback mechanisms"
+    monitoring: "Detailed logging with kg290 tags"
+
+# Build optimization settings
+buildSettings:
+  # Optimized build for faster deployment
+  buildCommand: |
+    echo "[kg290] Advanced build configuration for hackathon"
+    
+    # Install with build optimizations
+    pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
+    
+    # Verify all modular components
+    python -c "
+    # Test modular imports
+    try:
+        from embedder import PolicyEmbedder, create_embedder
+        from llm_router import LLMRouter, create_llm_router
+        from pdf_parser import ResponseParser, create_parser
+        from retriever import EnhancedRetriever, create_retriever
+        print('[kg290] All modular components verified')
+    except ImportError as e:
+        print(f'[kg290] Module import error: {e}')
+        print('[kg290] Falling back to main.py implementations')
+    
+    # Test model loading
+    from sentence_transformers import SentenceTransformer
+    model = SentenceTransformer('intfloat/e5-base-v2')
+    print(f'[kg290] Embedding model dimension: {model.get_sentence_embedding_dimension()}')
+    "
+    
+    echo "[kg290] Build optimization completed for hackathon evaluation"
+
+# No external databases required
+databases: []
+
+# Environment-specific settings
+environment:
+  production:
+    logging_level: "INFO"
+    model_caching: true
+    health_checks: true
+    performance_monitoring: true
+
+  development:
+    logging_level: "DEBUG"
+    model_caching: false
+    health_checks: true
+    performance_monitoring: false
