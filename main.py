@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import List
 import json
@@ -461,6 +462,33 @@ async def hackathon_endpoint(request: HackathonRequest):
     except Exception as e:
         print(f"[kg290] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/docs/redirect", include_in_schema=False)
+def redirect_swagger_section():
+    html_content = """
+    <html>
+        <head>
+            <title>Redirecting to API endpoint…</title>
+            <meta charset="UTF-8">
+            <script>
+                setTimeout(function() {
+                    window.location.href = "/docs#/default/hackathon_endpoint_hackrx_run_post";
+                }, 1000);
+            </script>
+        </head>
+        <body>
+            <h3>Loading Swagger UI...</h3>
+            <p>You will be redirected to the <code>POST /api/v1/hackrx/run</code> endpoint shortly.</p>
+        </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    print(f"[kg290] Starting server with Scout Model: {SCOUT_MODEL}")
+    uvicorn.run(app, host="127.0.0.1", port=8000)
 
 
 if __name__ == "__main__":
