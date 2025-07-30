@@ -1,5 +1,4 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import List
 import json
@@ -15,6 +14,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Initialize FastAPI app FIRST
 app = FastAPI(title="Insurance Policy Assistant", version="2.0.0")
 
 # Initialize the model globally
@@ -22,7 +22,7 @@ model = SentenceTransformer("intfloat/e5-base-v2")
 api_key = os.getenv("GROQ_API_KEY")
 
 # Updated model configurations
-SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # Updated from llama3-8b-8192
+SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 DEEP_MODEL = "llama3-70b-8192"
 
 
@@ -35,7 +35,8 @@ class HackathonRequest(BaseModel):
     questions: List[str]
 
 
-def chunk_text_with_metadata(text, chunk_size=1200):  # Increased chunk size for Llama 4
+def chunk_text_with_metadata(text, chunk_size=1200):
+    """Enhanced chunking for Llama 4 Scout"""
     chunks = []
     metadata = []
 
@@ -46,20 +47,24 @@ def chunk_text_with_metadata(text, chunk_size=1200):  # Increased chunk size for
             "chunk_id": i // chunk_size,
             "start_pos": i,
             "end_pos": min(i + chunk_size, len(text)),
-            "length": len(chunk)
+            "length": len(chunk),
+            "user": "RiteshNimbalkar27",
+            "timestamp": "2025-07-29 12:12:45"
         })
 
     return chunks, metadata
 
 
 def create_faiss_index(chunks):
+    """Create FAISS index for similarity search"""
     embeddings = model.encode(chunks)
     index = faiss.IndexFlatL2(embeddings.shape[1])
     index.add(embeddings.astype('float32'))
     return index, embeddings
 
 
-def retrieve_top_k_with_metadata(query, chunks, metadata, index, k=7):  # Increased k for better context
+def retrieve_top_k_with_metadata(query, chunks, metadata, index, k=7):
+    """Retrieve top-k relevant chunks"""
     query_embedding = model.encode([query])
     distances, indices = index.search(query_embedding.astype('float32'), k)
 
@@ -74,8 +79,10 @@ def retrieve_top_k_with_metadata(query, chunks, metadata, index, k=7):  # Increa
 
 
 def extract_pdf_from_url(pdf_url):
+    """Extract text from PDF URL"""
     try:
-        response = requests.get(pdf_url, stream=True)
+        print(f"[RiteshNimbalkar27] Downloading PDF from: {pdf_url}")
+        response = requests.get(pdf_url, stream=True, timeout=60)
         response.raise_for_status()
 
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
@@ -83,288 +90,263 @@ def extract_pdf_from_url(pdf_url):
                 temp_file.write(chunk)
             temp_path = temp_file.name
 
+        print(f"[RiteshNimbalkar27] Processing PDF...")
         doc = fitz.open(temp_path)
         text = "\n\n".join([page.get_text() for page in doc])
         doc.close()
 
         os.unlink(temp_path)
+        print(f"[RiteshNimbalkar27] PDF processed successfully, {len(text)} characters extracted")
         return text
 
     except Exception as e:
+        print(f"[RiteshNimbalkar27] PDF processing failed: {str(e)}")
         raise Exception(f"Failed to process PDF from URL: {str(e)}")
 
 
 def call_groq_api(payload):
+    """Call Groq API with error handling"""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
 
     try:
+        print(f"[RiteshNimbalkar27] Calling {payload.get('model', 'unknown')} model...")
         response = requests.post("https://api.groq.com/openai/v1/chat/completions",
                                  json=payload, headers=headers, timeout=30)
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        result = response.json()["choices"][0]["message"]["content"]
+        print(f"[RiteshNimbalkar27] API call successful, response length: {len(result)}")
+        return result
     except Exception as e:
+        print(f"[RiteshNimbalkar27] LLM API call failed: {str(e)}")
         raise Exception(f"LLM API call failed: {str(e)}")
 
 
 def scout_analysis(query, context_chunks, distances):
-    """Fast analysis with Llama 4 Scout - Updated from llama3-8b-8192"""
-
-    # Use more context due to 128K context window
-    context = "\n\n".join(context_chunks[:5])  # Use top 5 chunks
+    """Fast, precise analysis with Llama 4 Scout"""
+    context = "\n\n".join(context_chunks[:3])  # Use fewer chunks for speed
 
     payload = {
-        "model": SCOUT_MODEL,  # meta-llama/llama-4-scout-17b-16e-instruct
+        "model": SCOUT_MODEL,
         "messages": [
-            {"role": "system", "content": """You are an expert insurance policy analyst with Llama 4 Scout capabilities. 
-            Analyze insurance queries with high precision and determine if deep reasoning is needed.
+            {"role": "system", "content": """You are an expert insurance policy analyst. 
+            Provide PRECISE, CONCISE answers in ONE SENTENCE only.
 
-            Provide structured JSON responses with guaranteed formatting."""},
+            CRITICAL REQUIREMENTS:
+            - Answer in exactly ONE clear sentence
+            - Include specific numbers, timeframes, and conditions
+            - Use professional insurance language
+            - Be comprehensive but concise
+            - NO long explanations or multiple sentences
+
+            EXAMPLE FORMAT:
+            Query: "What is the grace period?"
+            Answer: "A grace period of thirty days is provided for premium payment after the due date to renew or continue the policy without losing continuity benefits."
+            """},
             {"role": "user", "content": f"""
 Query: {query}
 
-Policy Context:
+Insurance Policy Context:
 {context}
 
-Confidence Scores: {distances.tolist()[:5]}
-
-Analyze this insurance query and respond with EXACT JSON format:
+Provide analysis in EXACT JSON format:
 {{
     "needs_deep_reasoning": boolean,
     "confidence_score": float between 0.0-1.0,
-    "preliminary_answer": "detailed answer if confident enough",
-    "reasoning": "step-by-step analysis",
-    "complexity_level": "simple|medium|complex",
-    "relevant_clauses": ["clause1", "clause2"]
+    "preliminary_answer": "ONE PRECISE SENTENCE with all key details",
+    "reasoning": "brief analysis",
+    "complexity_level": "simple|medium|complex"
 }}
 
-Rules:
-- If confidence_score > 0.85 and complexity_level is "simple", provide preliminary_answer
-- If query involves multiple conditions, calculations, or legal interpretations, set needs_deep_reasoning: true
-- Always provide reasoning for your decision
-"""}
-        ],
-        "response_format": {"type": "json_object"},  # Guaranteed JSON with Llama 4 Scout
-        "temperature": 0.1,
-        "max_tokens": 2000
-    }
-
-    return call_groq_api(payload)
-
-
-def deep_reasoning_analysis(query, context_chunks, metadata):
-    """Comprehensive analysis with Llama 3.1 70B - Enhanced logging version"""
-
-    context = "\n\n".join(context_chunks)
-
-    print(f"[kg290] Starting deep reasoning analysis with Llama 3.1 70B...")
-    print(f"[kg290] Context length: {len(context)} characters, {len(context_chunks)} chunks")
-    print(f"[kg290] Timestamp: 2025-07-26 11:54:03")
-
-    payload = {
-        "model": DEEP_MODEL,  # llama3-70b-8192
-        "messages": [
-            {"role": "system", "content": """You are a senior insurance policy expert providing comprehensive analysis.
-            Provide detailed, accurate answers with clear reasoning and clause references.
-
-            Always respond in valid JSON format with high confidence scores for thorough analysis."""},
-            {"role": "user", "content": f"""
-Query: {query}
-
-Complete Policy Context:
-{context}
-
-Metadata: {json.dumps(metadata, indent=2)}
-
-Provide a comprehensive analysis in EXACT JSON format:
-{{
-    "detailed_answer": "comprehensive answer with specific details",
-    "supporting_clauses": ["exact clause text references"],
-    "conditions_and_limitations": ["list of relevant conditions"],
-    "confidence_score": float between 0.0-1.0,
-    "reasoning_steps": ["step1", "step2", "step3"],
-    "additional_considerations": "any important notes or exceptions",
-    "analysis_depth": "comprehensive|detailed|standard",
-    "certainty_level": "high|medium|low",
-    "processing_timestamp": "2025-07-26 11:54:03",
-    "processed_by": "kg290"
-}}
-
-Requirements:
-- Reference specific policy clauses with exact clause numbers
-- Include all relevant conditions and limitations
-- Provide step-by-step reasoning chain
-- Maintain high accuracy and precision standards
-- Set confidence_score based on completeness of analysis (aim for 0.85+ for comprehensive responses)
-- Include specific policy section references
-- Explain complex insurance terms clearly
+CRITICAL: preliminary_answer must be exactly ONE comprehensive sentence.
 """}
         ],
         "response_format": {"type": "json_object"},
-        "temperature": 0.2,
-        "max_tokens": 3000
+        "temperature": 0.05,  # Lower for more consistent answers
+        "max_tokens": 1000    # Reduced for faster responses
     }
 
-    print(f"[kg290] Calling Llama 3.1 70B API for deep analysis...")
+    return call_groq_api_with_retry(payload)
 
-    try:
-        response = call_groq_api(payload)
-        print(f"[kg290] Deep model response received successfully")
-        print(f"[kg290] Response length: {len(response)} characters")
 
-        # Try to parse and validate the response
+def deep_reasoning_analysis(query, context_chunks, metadata):
+    """Fast, precise analysis with Llama 3.1 70B"""
+    context = "\n\n".join(context_chunks[:4])  # Fewer chunks for speed
+
+    payload = {
+        "model": DEEP_MODEL,
+        "messages": [
+            {"role": "system", "content": """You are a senior insurance policy expert providing precise, one-sentence answers.
+
+            CRITICAL REQUIREMENTS:
+            - Provide exactly ONE comprehensive sentence
+            - Include all key details: amounts, timeframes, conditions
+            - Use professional insurance language
+            - Be complete but concise
+            - NO multiple sentences or long explanations
+            """},
+            {"role": "user", "content": f"""
+Query: {query}
+
+Insurance Policy Context:
+{context}
+
+Provide analysis in EXACT JSON format:
+{{
+    "detailed_answer": "ONE PRECISE, COMPREHENSIVE SENTENCE with all key details",
+    "confidence_score": float between 0.0-1.0,
+    "supporting_clauses": ["brief clause references"],
+    "conditions_and_limitations": ["key conditions only"]
+}}
+
+CRITICAL: detailed_answer must be exactly ONE sentence containing all essential information.
+"""}
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.05,
+        "max_tokens": 1200
+    }
+
+    return call_groq_api_with_retry(payload)
+
+
+def call_groq_api_with_retry(payload, max_retries=5):
+    """Enhanced API retry with better error handling"""
+    import time
+    import random
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    for attempt in range(max_retries):
         try:
-            parsed_response = json.loads(response)
-            confidence = parsed_response.get("confidence_score", "unknown")
-            analysis_depth = parsed_response.get("analysis_depth", "unknown")
-            print(f"[kg290] Deep analysis confidence: {confidence}")
-            print(f"[kg290] Analysis depth: {analysis_depth}")
-            print(f"[kg290] Deep reasoning analysis completed at 2025-07-26 11:54:03")
+            if attempt > 0:
+                # Exponential backoff with jitter
+                delay = min(60, (2 ** attempt) + random.uniform(0, 2))
+                print(f"[RiteshNimbalkar27] Retry delay: {delay:.2f}s")
+                time.sleep(delay)
 
-        except json.JSONDecodeError:
-            print(f"[kg290] Warning: Deep model response is not valid JSON, but proceeding...")
+            response = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                                     json=payload, headers=headers, timeout=60)
 
-        return response
+            if response.status_code == 429:
+                print(f"[RiteshNimbalkar27] Rate limited, retry {attempt + 1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    continue
+                else:
+                    # Return fallback answer instead of failing
+                    return '{"detailed_answer": "Unable to process due to rate limits. Please try again.", "confidence_score": 0.0}'
 
-    except Exception as e:
-        print(f"[kg290] Error in deep reasoning analysis: {str(e)}")
-        print(f"[kg290] Error timestamp: 2025-07-26 11:54:03")
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
 
-        # Return a fallback response
-        fallback_response = {
-            "detailed_answer": f"Deep analysis failed due to API error: {str(e)}. Please try again.",
-            "supporting_clauses": [],
-            "conditions_and_limitations": ["Analysis incomplete due to technical error"],
-            "confidence_score": 0.0,
-            "reasoning_steps": ["Deep analysis API call failed", "Returning fallback response"],
-            "additional_considerations": "Technical error occurred during analysis",
-            "analysis_depth": "failed",
-            "certainty_level": "low",
-            "processing_timestamp": "2025-07-26 11:54:03",
-            "processed_by": "kg290",
-            "error": str(e)
-        }
-
-        return json.dumps(fallback_response)
+        except Exception as e:
+            print(f"[RiteshNimbalkar27] Attempt {attempt + 1} failed: {str(e)}")
+            if attempt == max_retries - 1:
+                # Return fallback instead of error
+                return '{"detailed_answer": "Unable to process query due to technical issues.", "confidence_score": 0.0}'
 
 
-async def process_single_query(query: str, chunks, metadata, index):
-    """Updated dual LLM processing with enhanced confidence logging"""
+async def process_single_query(query: str, chunks, metadata, index, delay_seconds=2):
+    """Enhanced dual LLM processing with comprehensive answers"""
     try:
-        print(f"[kg290] Processing query with Llama 4 Scout: {query[:100]}...")
-        print(f"[kg290] Query processing started at: 2025-07-26 11:54:03")
+        print(f"[RiteshNimbalkar27] Processing enhanced query: {query[:100]}...")
 
-        # Retrieve relevant chunks
+        # Add delay to prevent rate limiting
+        if delay_seconds > 0:
+            await asyncio.sleep(delay_seconds)
+
         top_chunks, chunk_metadata, distances = retrieve_top_k_with_metadata(
-            query, chunks, metadata, index, k=7
+            query, chunks, metadata, index, k=5  # Fewer chunks for speed
         )
 
-        # Scout analysis with Llama 4 Scout
         scout_response = scout_analysis(query, top_chunks, distances)
 
         try:
             scout_data = json.loads(scout_response)
             scout_confidence = scout_data.get('confidence_score', 0.0)
-            print(f"[kg290] Scout analysis complete. Confidence: {scout_confidence}")
+            print(f"[RiteshNimbalkar27] Scout confidence: {scout_confidence}")
 
-            # Decision logic
             needs_deep = scout_data.get("needs_deep_reasoning", False)
             confidence = scout_data.get("confidence_score", 0.0)
             preliminary_answer = scout_data.get("preliminary_answer", "")
 
-            if not needs_deep and confidence > 0.85 and preliminary_answer:
-                print(f"[kg290] Using Scout preliminary answer (high confidence: {confidence})")
-                print(f"[kg290] Scout-only response completed at: 2025-07-26 11:54:03")
+            # Higher threshold for comprehensive answers
+            if not needs_deep and confidence > 0.75 and preliminary_answer and len(preliminary_answer) > 20:
+                print(f"[RiteshNimbalkar27] Using comprehensive Scout answer")
                 return {
                     "answer": preliminary_answer,
                     "reasoning": scout_data.get("reasoning", ""),
                     "confidence": confidence,
-                    "model_used": "scout_only",
-                    "complexity": scout_data.get("complexity_level", "simple"),
-                    "timestamp": "2025-07-26 11:54:03",
-                    "user": "kg290"
+                    "model_used": "scout_comprehensive",
+                    "timestamp": "2025-07-30 12:04:16",
+                    "user": "RiteshNimbalkar27"
                 }
             else:
-                print(f"[kg290] Escalating to deep reasoning model (scout confidence: {confidence})")
+                print(f"[RiteshNimbalkar27] Escalating to deep reasoning")
+                await asyncio.sleep(1)
 
-                # Deep analysis with Llama 3.1 70B
                 deep_response = deep_reasoning_analysis(query, top_chunks, chunk_metadata)
 
                 try:
                     deep_data = json.loads(deep_response)
-                    deep_confidence = deep_data.get("confidence_score", 0.8)
-
-                    # Enhanced logging for both models
-                    print(f"[kg290] Deep analysis complete. Confidence: {deep_confidence}")
-                    print(f"[kg290] Model progression: Scout({confidence:.3f}) → Deep({deep_confidence:.3f})")
-                    print(f"[kg290] Dual LLM analysis completed at: 2025-07-26 11:54:03")
+                    deep_confidence = deep_data.get("confidence_score", 0.85)
+                    detailed_answer = deep_data.get("detailed_answer", "")
 
                     return {
-                        "answer": deep_data.get("detailed_answer", "Unable to provide detailed analysis"),
+                        "answer": detailed_answer,
                         "reasoning": deep_data.get("reasoning_steps", []),
-                        "confidence": deep_confidence,  # Use deep model confidence
-                        "model_used": "dual_llm",
+                        "confidence": deep_confidence,
+                        "model_used": "dual_llm_comprehensive",
                         "supporting_clauses": deep_data.get("supporting_clauses", []),
                         "conditions": deep_data.get("conditions_and_limitations", []),
-                        "scout_confidence": confidence,  # Include scout confidence for comparison
-                        "deep_confidence": deep_confidence,
-                        "analysis_depth": deep_data.get("analysis_depth", "comprehensive"),
-                        "certainty_level": deep_data.get("certainty_level", "high"),
-                        "timestamp": "2025-07-26 11:54:03",
-                        "user": "kg290"
+                        "timestamp": "2025-07-30 12:04:16",
+                        "user": "RiteshNimbalkar27"
                     }
+
                 except json.JSONDecodeError as e:
-                    print(f"[kg290] Deep model JSON parsing failed: {str(e)}")
-                    print(f"[kg290] Using raw deep response with estimated confidence: 0.8")
                     return {
                         "answer": deep_response.strip(),
-                        "reasoning": "Processed with deep reasoning model (JSON parsing failed)",
                         "confidence": 0.8,
                         "model_used": "deep_fallback",
-                        "scout_confidence": confidence,
-                        "parsing_error": str(e),
-                        "timestamp": "2025-07-26 11:54:03",
-                        "user": "kg290"
+                        "timestamp": "2025-07-30 12:04:16",
+                        "user": "RiteshNimbalkar27"
                     }
 
         except json.JSONDecodeError as e:
-            print(f"[kg290] Scout JSON parsing failed: {str(e)}")
-            print(f"[kg290] Using direct scout response with estimated confidence: 0.7")
             return {
                 "answer": scout_response.strip(),
-                "reasoning": "Processed with Llama 4 Scout (JSON parsing failed)",
-                "confidence": 0.7,
+                "confidence": 0.75,
                 "model_used": "scout_fallback",
-                "parsing_error": str(e),
-                "timestamp": "2025-07-26 11:54:03",
-                "user": "kg290"
+                "timestamp": "2025-07-30 12:04:16",
+                "user": "RiteshNimbalkar27"
             }
 
     except Exception as e:
-        print(f"[kg290] Critical error in query processing: {str(e)}")
-        print(f"[kg290] Error occurred at: 2025-07-26 11:54:03")
         return {
             "answer": f"Error processing query: {str(e)}",
-            "reasoning": "System error occurred during processing",
             "confidence": 0.0,
             "model_used": "error",
-            "error_details": str(e),
-            "timestamp": "2025-07-26 11:54:03",
-            "user": "kg290"
+            "timestamp": "2025-07-30 12:04:16",
+            "user": "RiteshNimbalkar27"
         }
+
+# FastAPI Routes
 @app.get("/")
 def root():
     return {
         "message": "Insurance Policy Assistant API v2.0",
         "status": "running",
-        "user": "kg290",
+        "user": "RiteshNimbalkar27",
         "models": {
             "scout": SCOUT_MODEL,
             "deep": DEEP_MODEL
         },
-        "timestamp": "2025-07-26 11:37:56"
+        "timestamp": "2025-07-29 12:12:45"
     }
 
 
@@ -372,8 +354,8 @@ def root():
 def health_check():
     return {
         "status": "healthy",
-        "timestamp": "2025-07-26 11:37:56",
-        "user": "kg290",
+        "timestamp": "2025-07-29 12:12:45",
+        "user": "RiteshNimbalkar27",
         "scout_model": SCOUT_MODEL,
         "deep_model": DEEP_MODEL
     }
@@ -405,79 +387,69 @@ async def ask_query(req: QueryRequest):
             "model_used": result.get("model_used", "unknown"),
             "reasoning": result.get("reasoning", ""),
             "status": "success",
-            "scout_model": SCOUT_MODEL
+            "scout_model": SCOUT_MODEL,
+            "user": "RiteshNimbalkar27",
+            "timestamp": "2025-07-29 12:12:45"
         }
 
     except Exception as e:
-        return {"error": str(e), "status": "failed"}
+        return {"error": str(e), "status": "failed", "user": "RiteshNimbalkar27"}
 
 
 @app.post("/hackrx/run")
 async def hackathon_endpoint(request: HackathonRequest):
-    """Main hackathon endpoint with updated Llama 4 Scout"""
+    """Enhanced hackathon endpoint with comprehensive answer generation"""
     try:
-        print(f"[kg290] Processing document from: {request.documents}")
-        print(f"[kg290] Using models - Scout: {SCOUT_MODEL}, Deep: {DEEP_MODEL}")
+        print(f"[RiteshNimbalkar27] Processing document from: {request.documents}")
+        print(f"[RiteshNimbalkar27] Using enhanced models - Scout: {SCOUT_MODEL}, Deep: {DEEP_MODEL}")
+        print(f"[RiteshNimbalkar27] Timestamp: 2025-07-30 12:10:10")
 
         # Download and process document
         raw_text = extract_pdf_from_url(request.documents)
         chunks, metadata = chunk_text_with_metadata(raw_text)
         index, _ = create_faiss_index(chunks)
 
-        print(f"[kg290] Created {len(chunks)} chunks, processing {len(request.questions)} questions")
+        print(
+            f"[RiteshNimbalkar27] Created {len(chunks)} chunks, processing {len(request.questions)} questions with enhanced prompts")
 
-        # Process all questions with dual LLM system
+        # Process all questions with enhanced dual LLM system
         answers = []
-        model_usage_stats = {"scout_only": 0, "dual_llm": 0, "fallback": 0}
+        model_usage_stats = {"scout_comprehensive": 0, "dual_llm_comprehensive": 0, "fallback": 0}
 
         for i, question in enumerate(request.questions):
-            print(f"[kg290] Processing question {i + 1}/{len(request.questions)} with Llama 4 Scout")
-            result = await process_single_query(question, chunks, metadata, index)
+            print(f"[RiteshNimbalkar27] Processing question {i + 1}/{len(request.questions)} with enhanced system")
 
-            # Extract just the answer for the response
+            # Add progressive delay to prevent rate limiting
+            delay = 0.3 + (i * 0.1)  # Much faster: 0.3s base + 0.1s per question
+            result = await process_single_query(question, chunks, metadata, index, delay_seconds=delay)
+
+            # Extract comprehensive answer
             answer = result.get("answer", "Unable to determine from the policy document.")
             answers.append(answer)
 
-            # Track model usage
+            # Track enhanced model usage
             model_used = result.get("model_used", "unknown")
-            if model_used in model_usage_stats:
-                model_usage_stats[model_used] += 1
+            if "scout" in model_used and "comprehensive" in model_used:
+                model_usage_stats["scout_comprehensive"] += 1
+            elif "dual_llm" in model_used and "comprehensive" in model_used:
+                model_usage_stats["dual_llm_comprehensive"] += 1
             else:
                 model_usage_stats["fallback"] += 1
 
-        print(f"[kg290] Completed processing. Model usage: {model_usage_stats}")
+        print(f"[RiteshNimbalkar27] Enhanced processing completed. Model usage: {model_usage_stats}")
 
         return {
-            "answers": answers,
-            "_metadata": {
-                "total_questions": len(request.questions),
-                "model_usage": model_usage_stats,
-                "scout_model": SCOUT_MODEL,
-                "deep_model": DEEP_MODEL,
-                "user": "kg290",
-                "timestamp": "2025-07-26 11:37:56"
-            }
+            "answers": answers
         }
 
     except Exception as e:
-        print(f"[kg290] Error: {str(e)}")
+        print(f"[RiteshNimbalkar27] Enhanced system error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/docs/redirect", include_in_schema=False)
-def redirect_to_docs():
-    return RedirectResponse(url="/docs#/default/hackathon_endpoint_hackrx_run_post")
-
-
-# ✅ Sample endpoint as per your hackathon specification
-@app.post("/api/v1/hackrx/run")
-async def hackathon_endpoint(request: Request):
-    data = await request.json()
-    questions = data.get("questions", [])
-    blob_url = data.get("blob_url", "")
-    return {"answers": [f"Dummy answer for: {q}" for q in questions]}
 
 if __name__ == "__main__":
     import uvicorn
 
-    print(f"[kg290] Starting server with Scout Model: {SCOUT_MODEL}")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    print(f"[RiteshNimbalkar27] Starting server with Scout Model: {SCOUT_MODEL}")
+    print(f"[RiteshNimbalkar27] Server starting at: 2025-07-29 12:12:45")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
