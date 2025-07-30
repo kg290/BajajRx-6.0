@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import json
@@ -25,6 +26,13 @@ api_key = os.getenv("GROQ_API_KEY")
 SCOUT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 DEEP_MODEL = "llama3-70b-8192"
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or restrict to ["http://3.7.71.89:8000"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class QueryRequest(BaseModel):
     query: str
